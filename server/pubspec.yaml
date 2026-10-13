@@ -1,0 +1,10 @@
+name: location_share_server
+description: 信令服务器：房间管理 + 位置中继 + WebRTC 通话信令
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  web_socket_channel: ^3.0.0

@@ -1,0 +1,21 @@
+# Flutter
+app/.dart_tool/
+app/build/
+app/.flutter-plugins*
+app/windows/
+app/linux/
+app/macos/
+app/web/
+app/.idea/
+app/*.iml
+
+# Server
+server/.dart_tool/
+server/.packages
+server/pubspec.lock
+
+# 产物与临时
+*.apk
+*.log
+.env
+.DS_Store

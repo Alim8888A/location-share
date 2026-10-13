@@ -1,0 +1,11 @@
+# Render 免费层自动部署配置
+# 部署：Render 控制台 → New + → Blueprint → 选择本仓库即可
+services:
+  - type: web
+    name: locationshare
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: MONITOR_KEY
+        sync: false   # 可选：监视终端密钥，留空则不校验

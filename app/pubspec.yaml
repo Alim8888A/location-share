@@ -1,0 +1,35 @@
+name: location_share
+description: 位置共享 App：两人/多人实时位置共享 + 群组语音通话
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 定位
+  geolocator: ^14.1.1
+  permission_handler: ^13.0.2
+
+  # 地图（OpenStreetMap 免费瓦片，无需 API Key）
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+
+  # 实时通信与通话
+  web_socket_channel: ^3.0.3
+  flutter_webrtc: ^1.6.2
+
+  uuid: ^4.6.0
+  shared_preferences: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

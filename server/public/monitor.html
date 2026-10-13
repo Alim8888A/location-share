@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>位置共享 · 监视终端</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
+<style>
+:root {
+  --bg: #0b1220; --panel: #101a2e; --panel2: #16233c; --line: #22345a;
+  --text: #dce6f5; --dim: #7d93b8; --acc: #2dd4bf; --acc2: #38bdf8;
+  --warn: #fbbf24; --err: #f87171; --ok: #34d399;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: "Microsoft YaHei", system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── 顶栏 ── */
+header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.logo { font-weight: 700; font-size: 15px; letter-spacing: 1px; }
+.logo b { color: var(--acc); }
+#url { flex: 1; min-width: 220px; max-width: 420px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none; }
+#url:focus { border-color: var(--acc2); }
+#key { width: 110px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none; }
+button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; transition: .15s; }
+button:hover { border-color: var(--acc); color: var(--acc); }
+button.primary { background: var(--acc); border-color: var(--acc); color: #04211d; font-weight: 700; }
+button.primary:hover { filter: brightness(1.1); color: #04211d; }
+button.danger { border-color: #7f2c2c; color: var(--err); padding: 3px 10px; font-size: 12px; }
+button.danger:hover { background: #3a1414; color: var(--err); border-color: var(--err); }
+#dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); box-shadow: 0 0 8px var(--err); }
+#dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+#status { font-size: 12px; color: var(--dim); }
+.stats { display: flex; gap: 14px; margin-left: auto; font-size: 12px; color: var(--dim); }
+.stats b { color: var(--acc2); font-size: 15px; margin-right: 3px; }
+
+/* ── 主体 ── */
+main { flex: 1; display: flex; min-height: 0; }
+aside { width: 320px; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+aside h3 { font-size: 13px; color: var(--dim); padding: 10px 14px 6px; letter-spacing: 1px; }
+#rooms { flex: 1.3; overflow-y: auto; padding: 0 10px 10px; min-height: 0; }
+.room-card { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: .15s; }
+.room-card:hover, .room-card.active { border-color: var(--acc2); }
+.room-head { display: flex; justify-content: space-between; align-items: center; }
+.room-code { font-weight: 700; font-size: 15px; color: var(--acc); letter-spacing: 2px; }
+.room-meta { font-size: 11px; color: var(--dim); }
+.call-badge { font-size: 10px; color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 1px 6px; }
+.member-row { display: flex; align-items: center; gap: 8px; padding: 6px 0 0 8px; border-top: 1px dashed #1d2c4c; margin-top: 6px; font-size: 12px; }
+.member-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.member-name { flex: 1; }
+.incall { color: var(--warn); font-size: 10px; }
+.stale { color: var(--err); font-size: 10px; }
+#logBox { flex: 1; border-top: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+#log { flex: 1; overflow-y: auto; padding: 6px 14px 10px; font-size: 11.5px; line-height: 1.7; font-family: Consolas, monospace; min-height: 0; }
+#log .t { color: #557; margin-right: 6px; }
+#log .join { color: var(--ok); } #log .leave { color: var(--err); }
+#log .call { color: var(--warn); } #log .info { color: var(--dim); }
+
+#mapWrap { flex: 1; position: relative; min-width: 0; }
+#map { position: absolute; inset: 0; background: #0a1526; }
+#mapCtl { position: absolute; top: 10px; right: 10px; z-index: 1000; display: flex; gap: 6px; }
+#mapCtl button { background: rgba(16,26,46,.9); backdrop-filter: blur(4px); }
+#emptyHint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--dim); z-index: 500; pointer-events: none; font-size: 14px; text-align: center; line-height: 2; }
+.leaflet-container { background: #0a1526; }
+.leaflet-tile { filter: brightness(.75) saturate(.8) hue-rotate(190deg) invert(.92) contrast(1.05); }
+.mk-pin { border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,.5); }
+.mk-label { background: rgba(10,18,32,.85); color: #dce6f5; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
+.popup-btn { margin-top: 6px; }
+@media (max-width: 760px) { aside { width: 240px; } .stats { display: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <span id="dot"></span>
+  <span class="logo">📍 <b>位置共享</b> · 监视终端</span>
+  <input id="url" placeholder="服务器地址，如 wss://xxx.onrender.com">
+  <input id="key" type="password" placeholder="密钥(可选)">
+  <button id="btnConn" class="primary">连接</button>
+  <span id="status">未连接</span>
+  <div class="stats">
+    <span><b id="stRooms">0</b>房间</span>
+    <span><b id="stMembers">0</b>成员</span>
+    <span><b id="stCalls">0</b>通话中</span>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <h3>房间 / 成员</h3>
+    <div id="rooms"></div>
+    <div id="logBox">
+      <h3>事件日志</h3>
+      <div id="log"></div>
+    </div>
+  </aside>
+  <div id="mapWrap">
+    <div id="map"></div>
+    <div id="mapCtl">
+      <button id="btnAccuracy" title="切换精度圈">精度圈: 开</button>
+      <button id="btnFit" title="缩放到全部成员">适应视野</button>
+      <button id="btnSnap" title="刷新快照">刷新</button>
+    </div>
+    <div id="emptyHint">尚无成员上线<br>监视终端实时显示所有房间的位置与通话状态</div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<script>
+/* ═══════════ 基础状态 ═══════════ */
+const $ = id => document.getElementById(id);
+const COLORS = ['#2dd4bf','#38bdf8','#f472b6','#fbbf24','#a78bfa','#34d399','#fb923c','#60a5fa','#e879f9','#4ade80'];
+let ws = null, manualClose = false, retryTimer = null;
+let rooms = {};            // code -> {code, members:{id:{...}}, inCall:[]}
+let showAccuracy = true;
+const markers = {};        // id -> {marker, circle, color}
+const map = L.map('map', { zoomControl: false, attributionControl: false })
+  .setView([39.9, 116.4], 5);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+/* ═══════════ 连接 ═══════════ */
+function defaultUrl() {
+  if (location.protocol.startsWith('http')) {
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  }
+  return 'ws://192.168.137.1:8888';
+}
+function connect() {
+  clearTimeout(retryTimer);
+  if (ws) { manualClose = true; try { ws.close(); } catch(e){} }
+  let u = $('url').value.trim() || defaultUrl();
+  if (u.startsWith('https://')) u = 'wss://' + u.slice(8);
+  if (u.startsWith('http://'))  u = 'ws://'  + u.slice(7);
+  if (!/^wss?:\/\//.test(u)) u = 'ws://' + u;
+  localStorage.setItem('mon_url', u); localStorage.setItem('mon_key', $('key').value);
+  setStatus('连接中…', false);
+  ws = new WebSocket(u);
+  ws.onopen = () => {
+    manualClose = false;
+    setStatus('已连接 ' + u, true);
+    send({ type: 'monitor', key: $('key').value });
+    send({ type: 'monitor-snapshot' });
+  };
+  ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch(err){} };
+  ws.onclose = () => {
+    setStatus('已断开', false);
+    clearAllMarkers(); rooms = {}; renderRooms(); renderStats();
+    if (!manualClose) {
+      setStatus('已断开，5 秒后重连…', false);
+      retryTimer = setTimeout(connect, 5000);
+    }
+  };
+  ws.onerror = () => setStatus('连接失败', false);
+}
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+function setStatus(t, on) { $('status').textContent = t; $('dot').classList.toggle('on', !!on); }
+
+/* ═══════════ 消息处理 ═══════════ */
+function handle(m) {
+  switch (m.type) {
+    case 'monitor-snapshot':
+      rooms = {};
+      (m.rooms || []).forEach(r => {
+        rooms[r.code] = { code: r.code, inCall: r.inCall || [], members: {} };
+        (r.members || []).forEach(mm => rooms[r.code].members[mm.id] = mm);
+      });
+      renderRooms(); renderStats(); syncMarkers();
+      break;
+    case 'monitor-event':
+      if (m.event === 'join' && rooms[m.room]) {
+        rooms[m.room].members[m.id] = { id: m.id, name: m.name };
+      } else if (m.event === 'leave' && rooms[m.room]) {
+        delete rooms[m.room].members[m.id];
+        removeMarker(m.id);
+      } else if (m.event === 'call-start' && rooms[m.room]) {
+        rooms[m.room].inCall.push(m.id);
+      } else if (m.event === 'room-closed') {
+        Object.keys(rooms[m.room]?.members || {}).forEach(removeMarker);
+        delete rooms[m.room];
+      }
+      renderRooms(); renderStats(); syncMarkers();
+      logEvent(m);
+      break;
+    case 'monitor-loc': {
+      const r = rooms[m.room]; if (!r) break;
+      const mm = r.members[m.id] || (r.members[m.id] = { id: m.id });
+      mm.lat = m.lat; mm.lng = m.lng; mm.heading = m.heading;
+      mm.accuracy = m.accuracy; mm.ts = m.ts;
+      syncMarkers();
+      break;
+    }
+    case 'monitor-log':
+      addLog(m.text, 'info');
+      break;
+    case 'monitor-denied':
+      setStatus('密钥错误，被拒绝', false);
+      break;
+  }
+}
+
+/* ═══════════ 渲染：房间列表 ═══════════ */
+function renderRooms() {
+  const box = $('rooms');
+  const codes = Object.keys(rooms);
+  if (!codes.length) { box.innerHTML = '<div style="color:#557;font-size:12px;padding:14px 4px;">暂无活动房间</div>'; return; }
+  box.innerHTML = codes.map(c => {
+    const r = rooms[c];
+    const mems = Object.values(r.members);
+    const rows = mems.map(mm => {
+      const color = colorOf(mm.id);
+      const stale = mm.ts && (Date.now() - mm.ts > 60000);
+      const ic = r.inCall.includes(mm.id) ? '<span class="incall">📞通话中</span>' : '';
+      const st = stale ? '<span class="stale">⏱信号丢失</span>' : '';
+      return `<div class="member-row">
+        <span class="member-dot" style="background:${color}"></span>
+        <span class="member-name">${esc(mm.name || mm.id)}</span>${ic}${st}
+        <button class="danger" onclick="kick('${c}','${mm.id}')">踢出</button>
+      </div>`;
+    }).join('');
+    return `<div class="room-card" onclick="focusRoom('${c}')">
+      <div class="room-head">
+        <span class="room-code">${c}</span>
+        <span>${r.inCall.length ? '<span class="call-badge">通话中</span>' : ''}</span>
+      </div>
+      <div class="room-meta">${mems.length} 人在线</div>
+      ${rows}
+      <button class="popup-btn" style="margin-top:8px" onclick="event.stopPropagation();announce('${c}')">📢 发公告</button>
+    </div>`;
+  }).join('');
+}
+function renderStats() {
+  let mc = 0, cc = 0;
+  Object.values(rooms).forEach(r => { mc += Object.keys(r.members).length; cc += r.inCall.length; });
+  $('stRooms').textContent = Object.keys(rooms).length;
+  $('stMembers').textContent = mc;
+  $('stCalls').textContent = cc;
+}
+function esc(s) { return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+/* ═══════════ 地图 ═══════════ */
+function colorOf(id) {
+  let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return COLORS[h % COLORS.length];
+}
+function removeMarker(id) {
+  const e = markers[id];
+  if (e) { map.removeLayer(e.marker); if (e.circle) map.removeLayer(e.circle); delete markers[id]; }
+}
+function clearAllMarkers() { Object.keys(markers).forEach(removeMarker); }
+function syncMarkers() {
+  const all = new Set();
+  Object.values(rooms).forEach(r => Object.values(r.members).forEach(mm => {
+    all.add(mm.id);
+    if (mm.lat == null || mm.lng == null) return;
+    const color = colorOf(mm.id);
+    let e = markers[mm.id];
+    const ll = [mm.lat, mm.lng];
+    const label = mm.name || mm.id;
+    const inCall = Object.values(rooms).some(r => r.members[mm.id] && r.inCall.includes(mm.id));
+    const html = `<div class="mk-pin" style="width:14px;height:14px;background:${color};${inCall ? 'outline:3px solid #fbbf24;' : ''}"></div>`;
+    if (!e) {
+      const icon = L.divIcon({ html, className: '', iconSize: [14,14] });
+      const mk = L.marker(ll, { icon }).addTo(map);
+      mk.bindPopup(`<b style="color:${color}">${esc(label)}</b><br><span style="font-size:11px;color:#7d93b8" id="pop-${mm.id}"></span>`);
+      markers[mm.id] = e = { marker: mk, circle: null, color };
+    } else {
+      e.marker.setLatLng(ll);
+    }
+    e.marker.setIcon(L.divIcon({ html, className: '', iconSize: [14,14] }));
+    $('pop-' + mm.id) && ($('pop-' + mm.id).textContent =
+      `精度 ${mm.accuracy ? Math.round(mm.accuracy) + 'm' : '-'} · ${mm.ts ? new Date(mm.ts).toLocaleTimeString() : ''}`);
+    if (showAccuracy && mm.accuracy) {
+      if (!e.circle) e.circle = L.circle(ll, { radius: mm.accuracy, color, weight: 1, fillOpacity: .08 }).addTo(map);
+      else e.circle.setLatLng(ll).setRadius(mm.accuracy);
+    } else if (e.circle) { map.removeLayer(e.circle); e.circle = null; }
+  }));
+  // 移除已消失的
+  Object.keys(markers).forEach(id => { if (!all.has(id)) removeMarker(id); });
+  $('emptyHint').style.display = all.size ? 'none' : 'flex';
+}
+function fitAll() {
+  const pts = Object.values(markers).map(e => e.marker.getLatLng());
+  if (pts.length === 1) map.setView(pts[0], 16);
+  else if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(.3));
+}
+function focusRoom(code) {
+  document.querySelectorAll('.room-card').forEach(el => el.classList.remove('active'));
+  event?.target?.closest?.('.room-card')?.classList.add('active');
+  const r = rooms[code]; if (!r) return;
+  const pts = Object.values(r.members).filter(m => m.lat != null).map(m => [m.lat, m.lng]);
+  if (pts.length === 1) map.setView(pts[0], 16);
+  else if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(.3));
+}
+
+/* ═══════════ 控制 ═══════════ */
+function kick(room, id) {
+  if (confirm('确定将该成员移出房间？')) send({ type: 'monitor-kick', room, id });
+}
+function announce(room) {
+  const text = prompt('发送给房间 ' + room + ' 所有成员的公告：');
+  if (text) send({ type: 'monitor-broadcast', room, text });
+}
+function logEvent(m) {
+  const cls = { join: 'join', leave: 'leave', 'call-start': 'call', 'room-closed': 'leave' }[m.event] || 'info';
+  const txt = { join: `${m.name} 加入房间 ${m.room}`, leave: `${m.name || m.id} 离开房间 ${m.room}`,
+    'call-start': `${m.name || m.id} 在房间 ${m.room} 发起通话`, 'room-closed': `房间 ${m.room} 已解散` }[m.event] || m.event;
+  addLog(txt, cls);
+}
+function addLog(text, cls) {
+  const el = $('log');
+  const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  el.insertAdjacentHTML('afterbegin', `<div><span class="t">${t}</span><span class="${cls}">${esc(text)}</span></div>`);
+  while (el.children.length > 300) el.lastChild.remove();
+}
+
+/* ═══════════ 事件绑定 ═══════════ */
+$('btnConn').onclick = () => { manualClose = true; connect(); };
+$('url').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+$('key').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+$('btnAccuracy').onclick = () => { showAccuracy = !showAccuracy; $('btnAccuracy').textContent = '精度圈: ' + (showAccuracy ? '开' : '关'); syncMarkers(); };
+$('btnFit').onclick = fitAll;
+$('btnSnap').onclick = () => send({ type: 'monitor-snapshot' });
+
+/* ═══════════ 启动 ═══════════ */
+$('url').value = new URLSearchParams(location.search).get('server') || localStorage.getItem('mon_url') || defaultUrl();
+$('key').value = localStorage.getItem('mon_key') || '';
+addLog('监视终端就绪，点击「连接」开始监控', 'info');
+connect();
+</script>
+</body>
+</html>
